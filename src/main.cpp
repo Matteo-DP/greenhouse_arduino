@@ -9,6 +9,8 @@ TODO:
 - Water level sensor
 */
 
+#define DELAY_MS 500
+
 #define SENSOR 3
 #define INFO 2
 #define ERROR 1
@@ -115,5 +117,5 @@ void setup() {
 
 void loop() {
   ip.update();
-  delay(500);
+  delay(DELAY_MS);
 };

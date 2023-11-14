@@ -15,6 +15,8 @@
 ------------------ TODO: ------------------
 - Photoresistor to save energy on lamps
 - Water level sensor
+- Tests:
+  - RTC
 ------------------ END TODO ------------------ 
 */ 
 

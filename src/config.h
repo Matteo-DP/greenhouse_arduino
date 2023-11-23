@@ -2,7 +2,7 @@
 
 // ------------------ CLOCK CYCLES ------------------
 #define CYCLE_DELAY_MS 500 // Main loop delay
-#define CYCLES_PER_ACTION 120 // Saving log data
+#define CYCLES_PER_ACTION 120 // Saving log data: 120
 // ------------------ END CLOCK CYCLES ------------------
 
 // ------------------ LOGGING ------------------

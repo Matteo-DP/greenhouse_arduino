@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include <LiquidCrystal_I2C.h>
-#include <Wire.h>
 #include <RTClib.h>
-#include <config.h>
+#include <Wire.h>
 #include <SPI.h>
+#include <config.h>
 #include <logger.h>
 
 /*
@@ -15,15 +15,12 @@
 ------------------ TODO: ------------------
 - Photoresistor to save energy on lamps
 - Water level sensor
-- Tests:
+- Test:
   - RTC
 ------------------ END TODO ------------------ 
 */ 
 
 // ------------------ CLASSES ------------------
-// ------------------ LOGGER ------------------
-Logger logger;
-// ------------------ END LOGGER ------------------
 // ------------------ IP ------------------
 class Ip {
   private:
@@ -53,14 +50,16 @@ class Ip {
     // ------------------ MOSFET ------------------
     class Mosfet {
       public:
-        unsigned long startMillis = millis();
+        unsigned long currentMillis;
         unsigned long wateringStartMillis;
         unsigned long wateringPeriodMillis = PUMP_WATERING_PERIOD_MILLIS;
         unsigned long wateringTimeoutMillis = PUMP_WATERING_TIMEOUT_MILLIS;
-        unsigned long wateringEndMillis = 0;
+        unsigned long wateringEndMillis;
+        int initialWatering = 0;
 
         int pumpState = ch1[2]; // Initialse default pump state
 
+        // { pin, pin mode, default pin state }
         const int ch1 [3] = {MOSFET_CH1_PIN, OUTPUT, LOW}; // PUMP
         const int ch2 [3] = {MOSFET_CH2_PIN, OUTPUT, HIGH}; // INFRARED
         const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, HIGH}; // COLD WHITE
@@ -79,16 +78,18 @@ class Ip {
           return 0;
       };
       int write(int channel, int value) {
-          if(value != HIGH || value != LOW) { logger.log("Unexpected mosfet write value", ERROR); return 1; }
+          // if(value != (HIGH || LOW)) { logger.log("Unexpected mosfet write value", ERROR); return 1; }
           switch(channel) {
             case PUMP:
                 logger.log("Turning pump " + String(value), INFO);
                 digitalWrite(ch1[0], value);
                 if(value == HIGH) {
                   wateringStartMillis = millis();
+                  logger.log("Watering start millis: " + String(wateringStartMillis), INFO);
                   pumpState = 1;
                 } else {
                   wateringEndMillis = millis();
+                  logger.log("Watering end millis: " + String(wateringEndMillis), DEBUG);
                   pumpState = 0;
                 }
                 break;
@@ -117,11 +118,11 @@ class Ip {
           return 0;
       };
       int checkWateringMillis() {
-        if(pumpState == 1 && (startMillis - wateringStartMillis) > wateringPeriodMillis) {
-          logger.log("Turning off pump", INFO);
+        if(pumpState == 1 && ((currentMillis - wateringStartMillis) > (wateringPeriodMillis))) {
+          logger.log("Turning off pump, elapsed: " + String(currentMillis - wateringStartMillis), INFO);
           write(PUMP, LOW);
         } else if(pumpState == 1) {
-          logger.log("Pump is on. Millis since watering: " + String(startMillis - wateringStartMillis) + " total watering time: " + wateringPeriodMillis, DEBUG);
+          logger.log("Pump is on. Millis since watering: " + String(currentMillis - wateringStartMillis) + " total watering time: " + wateringPeriodMillis, DEBUG);
         };
         return 0;
       };
@@ -176,15 +177,15 @@ class Ip {
           };
           if (!_rtc.isrunning()) {
             logger.log("RTC is not running.", ERROR);
-            _rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); // set RTC to compile time
           };
+          _rtc.adjust(DateTime(F(__DATE__), F(__TIME__))); // set RTC to compile time
           logger.log("RTC initialised: " + getDateTimeString(), INFO);
           return 0;
         };
     } rtc;
     // ------------------ END RTC ------------------
     // ------------------ PRIVATE IP VARIABLES ------------------
-    unsigned long cycle = 0;
+    int cycle = 110;
     // ------------------ END IP VARIABLES ------------------
     // ------------------ IP FUNCTIONS ------------------
     // Functions that require multiple nested classes' functionality
@@ -211,9 +212,12 @@ class Ip {
 int Ip::checkMoisture() {
   // Check if watering is needed
   // Percentage should be under threshhold, pump should be off and millis since last watering should be over timeout to prevent constant watering due to water not being absorbed yet
-  if(soil_moisture.percentage < PERCENTAGE_MOISTURE_THRESHOLD && mosfet.pumpState == 0 && (mosfet.startMillis - mosfet.wateringEndMillis) > mosfet.wateringTimeoutMillis) {
+  if(soil_moisture.percentage < PERCENTAGE_MOISTURE_THRESHOLD && mosfet.pumpState == 0 && (((mosfet.currentMillis - mosfet.wateringEndMillis) > (mosfet.wateringTimeoutMillis)) || mosfet.initialWatering == 0)) {
     logger.log("Turning on pump for " + String(mosfet.wateringPeriodMillis) + "millis", INFO);
     mosfet.write(PUMP, HIGH);
+    if(mosfet.initialWatering == 0) mosfet.initialWatering = 1;
+  } else {
+    logger.log("Watering not needed", INFO);
   }
   return 0;
 };
@@ -229,6 +233,7 @@ int Ip::checkLamp() {
   return 0;
 };
 int Ip::init() {
+  mosfet.currentMillis = millis();
   mosfet.init();
   lcd.init();
   soil_moisture.init();
@@ -238,12 +243,17 @@ int Ip::init() {
 // ------------------ MAIN LOOP ------------------
 int Ip::update() {
   cycle++;
+  mosfet.currentMillis = millis();
+  logger.log(String(mosfet.currentMillis), DEBUG);
   rtc.update(); // Update RTC time variable every cycle
 
   soil_moisture.read();
   lcd.update(soil_moisture.percentage);
   lcdDisplayTimeString();
 
+  logger.log("Cycle: " + String(cycle), DEBUG);
+
+  mosfet.checkWateringMillis();
   if(cycle == CYCLES_PER_ACTION) {
     checkMoisture();
     checkLamp();
@@ -252,7 +262,6 @@ int Ip::update() {
     cycle = 0;
   };
 
-  mosfet.checkWateringMillis();
   return 0;
 };
 // ------------------ END MAIN LOOP ------------------
@@ -262,6 +271,8 @@ int Ip::update() {
 
 // ------------------ MAIN ------------------
 void setup() {
+  Wire.begin();
+  Serial.begin(9600);
   logger.log("Setup ...", INFO);
   ip.init();
   logger.log("Setup finished", INFO);

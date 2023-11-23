@@ -3,9 +3,6 @@
 
 class Logger {
   public:
-    Logger() {
-      Serial.begin(9600);
-    }
     int log(String message, int importance = INFO) {
       if(importance <= logLevel) {
         Serial.println("[" + logLevelToString(importance) + "]" + ": " + message);
@@ -33,4 +30,4 @@ class Logger {
           return "?";
       }
     }
-};
+} logger;

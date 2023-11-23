@@ -48,3 +48,10 @@
 // ------------------ END LCD ------------------
 
 // ------------------ END CONFIG ------------------
+
+// ------------------ DATABASE TYPE MAP ------------------
+// TODO: check type map
+#define SOIL_MOISTURE 0
+#define PUMP_STATUS
+#define LAMP_STATUS
+// ------------------ END DATABASE TYPE MAP ------------------

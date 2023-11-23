@@ -20,6 +20,12 @@
 ------------------ END TODO ------------------ 
 */ 
 
+/*
+------------------ TESTS: ------------------
+- Lamp timing
+------------------ END TESTS ------------------
+*/
+
 // ------------------ CLASSES ------------------
 // ------------------ IP ------------------
 class Ip {
@@ -258,7 +264,7 @@ int Ip::update() {
     checkMoisture();
     checkLamp();
     logger.log("Saving data. Cycle:" + String(cycle), INFO);
-    logger.save(soil_moisture.percentage);
+    logger.serialToRpiDb(SOIL_MOISTURE, soil_moisture.percentage);
     cycle = 0;
   };
 

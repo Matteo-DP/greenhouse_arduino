@@ -91,7 +91,7 @@ class Ip {
                 digitalWrite(ch1[0], value);
                 if(value == HIGH) {
                   wateringStartMillis = millis();
-                  logger.log("Watering start millis: " + String(wateringStartMillis), INFO);
+                  logger.log("Watering start millis: " + String(wateringStartMillis), DEBUG);
                   pumpState = 1;
                 } else {
                   wateringEndMillis = millis();
@@ -123,6 +123,16 @@ class Ip {
           }
           return 0;
       };
+      bool checkAllLampsOn() {
+        const int lamp1 = digitalRead(ch2[0]);
+        const int lamp2 = digitalRead(ch3[0]);
+        const int lamp3 = digitalRead(ch4[0]);
+        if(lamp1 == HIGH && lamp2 == HIGH && lamp3 == HIGH) {
+          return true;
+        } else {
+          return false;
+        }
+      }
       int checkWateringMillis() {
         if(pumpState == 1 && ((currentMillis - wateringStartMillis) > (wateringPeriodMillis))) {
           logger.log("Turning off pump, elapsed: " + String(currentMillis - wateringStartMillis), INFO);
@@ -223,7 +233,7 @@ int Ip::checkMoisture() {
     mosfet.write(PUMP, HIGH);
     if(mosfet.initialWatering == 0) mosfet.initialWatering = 1;
   } else {
-    logger.log("Watering not needed", INFO);
+    logger.log("Watering not needed", DEBUG);
   }
   return 0;
 };
@@ -231,10 +241,14 @@ int Ip::checkLamp() {
   // Check if the current time is within the day cycle interval
   if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
     // Current time is within the day cycle interval
-    mosfet.write(ALL_LAMPS, HIGH);
+    if(mosfet.checkAllLampsOn() == false) {
+      mosfet.write(ALL_LAMPS, HIGH);
+    }
   } else {
     // Current time is outside the day cycle interval
-    mosfet.write(ALL_LAMPS, LOW);
+    if(mosfet.checkAllLampsOn() == true) {
+      mosfet.write(ALL_LAMPS, LOW);
+    }
   }
   return 0;
 };
@@ -263,7 +277,7 @@ int Ip::update() {
   if(cycle == CYCLES_PER_ACTION) {
     checkMoisture();
     checkLamp();
-    logger.log("Saving data. Cycle:" + String(cycle), INFO);
+    logger.log("Saving data. Cycle:" + String(cycle), DEBUG);
     logger.serialToRpiDb(SOIL_MOISTURE, soil_moisture.percentage);
     cycle = 0;
   };

@@ -12,7 +12,7 @@
 #define INFO 2
 #define ERROR 1
 
-#define LOG_LEVEL DEBUG // Log level to display logs for, logs with a higher importance level will be displayed as well, with sensor being the lowest and error the highest
+#define LOG_LEVEL INFO // Log level to display logs for, logs with a higher importance level will be displayed as well, with sensor being the lowest and error the highest
 // ------------------ END LOGGING ------------------
 
 // ------------------ SOIL MOISTURE ------------------

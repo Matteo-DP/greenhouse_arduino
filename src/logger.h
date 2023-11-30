@@ -5,13 +5,15 @@ class Logger {
   public:
     int log(String message, int importance = INFO) {
       if(importance <= logLevel) {
-        Serial.println("[" + logLevelToString(importance) + "]" + ": " + message);
+        Serial.println("LOG: [" + logLevelToString(importance) + "]" + ": " + message);
       }
       return 0;
     };
-    int save(int value) {
-      // Do something
-      log("Should save data / , but no logic here yet", ERROR);
+    int serialToRpiDb(int type, int value) {
+      // Serial communication with Raspberry Pi
+      // Line must begin with "RPI:" and end with "\n"
+      // Format: RPI: <type> <value>
+      Serial.println("RPI: " + String(type) + " " + String(value));
       return 0;
     }
   private:

@@ -6,3 +6,6 @@
 
 # LIBRARIES
 /lib/
+
+# RASPBERRY PI
+/rpi/db_connector.py

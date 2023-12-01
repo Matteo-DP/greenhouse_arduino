@@ -9,3 +9,4 @@
 
 # RASPBERRY PI
 /rpi/db_connector.py
+/rpi/twitch_config.sh

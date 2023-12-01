@@ -1,14 +1,12 @@
 from flask import Flask
-
-# Possible methods:
-# Turn on pump for x millis
-# Toggle lamps
+from arduino_serial import sendLamp
 
 app = Flask(__name__)
 
-@app.route('/')
+@app.route('/updateLamps')
 def home():
-    return "Hello, World!"
+    sendLamp()
+    return "Lamps updated!", 200
 
 if __name__ == '__main__':
     app.run(debug=True)

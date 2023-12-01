@@ -66,10 +66,15 @@ class Ip {
         int pumpState = ch1[2]; // Initialse default pump state
 
         // { pin, pin mode, default pin state }
+        // Set all default lamp states to off, ask for which lamps to turn on on init
         const int ch1 [3] = {MOSFET_CH1_PIN, OUTPUT, LOW}; // PUMP
-        const int ch2 [3] = {MOSFET_CH2_PIN, OUTPUT, HIGH}; // INFRARED
-        const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, HIGH}; // COLD WHITE
-        const int ch4 [3] = {MOSFET_CH4_PIN, OUTPUT, HIGH}; // BLOOMING
+        const int ch2 [3] = {MOSFET_CH2_PIN, OUTPUT, LOW}; // INFRARED
+        const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, LOW}; // COLD WHITE
+        const int ch4 [3] = {MOSFET_CH4_PIN, OUTPUT, LOW}; // BLOOMING
+
+        int useInfrared = ch2[2];
+        int useColdWhite = ch3[2];
+        int useBlooming = ch4[2];
 
         int init() {
           pinMode(ch1[0], ch1[1]);
@@ -80,6 +85,7 @@ class Ip {
           digitalWrite(ch2[0], ch2[2]);
           digitalWrite(ch3[0], ch3[2]);
           digitalWrite(ch4[0], ch4[2]);
+          logger.askWhichLamps();
           logger.log("Mosfet initialised", INFO);
           return 0;
       };
@@ -112,10 +118,19 @@ class Ip {
                 digitalWrite(ch4[0], value);
                 break;
             case ALL_LAMPS:
-                logger.log("Turning all lamps " + String(value), INFO);
-                digitalWrite(ch2[0], value);
-                digitalWrite(ch3[0], value);
-                digitalWrite(ch4[0], value);
+                logger.log("Turning all available lamps " + String(value), INFO);
+                switch(value) {
+                  case LOW:
+                    // Dont check for states, just turn off everything to be sure
+                    digitalWrite(ch2[0], LOW);
+                    digitalWrite(ch3[0], LOW);
+                    digitalWrite(ch4[0], LOW);
+                  case HIGH:
+                    digitalWrite(ch2[0], useInfrared);
+                    digitalWrite(ch3[0], useColdWhite);
+                    digitalWrite(ch4[0], useBlooming);
+                  break;
+                }
                 break;
             default:
                 logger.log("Invalid channel: " + String(channel), ERROR);
@@ -123,11 +138,11 @@ class Ip {
           }
           return 0;
       };
-      bool checkAllLampsOn() {
+      bool checkLampOn() {
         const int lamp1 = digitalRead(ch2[0]);
         const int lamp2 = digitalRead(ch3[0]);
         const int lamp3 = digitalRead(ch4[0]);
-        if(lamp1 == HIGH && lamp2 == HIGH && lamp3 == HIGH) {
+        if(lamp1 == HIGH || lamp2 == HIGH || lamp3 == HIGH) {
           return true;
         } else {
           return false;
@@ -213,6 +228,8 @@ class Ip {
     };
     int checkMoisture();
     int checkLamp();
+    static char message[MAX_SERIAL_BUFFER_SIZE];
+    static int messageIndex;
     // ------------------ END IP FUNCTIONS ------------------
   public:
     // ------------------ PUBLIC IP VARIABLES ------------------
@@ -221,6 +238,7 @@ class Ip {
     // ------------------ PUBLIC IP FUNCTIONS ------------------
     int init();
     int update();
+    int readSerial();
     // ------------------ END PUBLIC IP FUNCTIONS ------------------
 } ip;
 // ------------------ END IP ------------------
@@ -241,12 +259,12 @@ int Ip::checkLamp() {
   // Check if the current time is within the day cycle interval
   if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
     // Current time is within the day cycle interval
-    if(mosfet.checkAllLampsOn() == false) {
+    if(mosfet.checkLampOn() == false) {
       mosfet.write(ALL_LAMPS, HIGH);
     }
   } else {
     // Current time is outside the day cycle interval
-    if(mosfet.checkAllLampsOn() == true) {
+    if(mosfet.checkLampOn() == true) {
       mosfet.write(ALL_LAMPS, LOW);
     }
   }
@@ -260,6 +278,50 @@ int Ip::init() {
   rtc.init();
   return 0;
 };
+int Ip::readSerial() {
+  messageIndex = 0;
+  while(Serial.available() > 0) {
+    char inChar = Serial.read();
+    if(inChar != '<') {
+      message[messageIndex] = inChar;
+      messageIndex++;
+    }
+    if(inChar == '>') {
+      String messageString = String(message);
+      // Empty the message array
+      for(int i = 0; i < MAX_SERIAL_BUFFER_SIZE; i++) {
+        message[i] = '\0';
+      }
+      messageIndex = 0;
+      logger.log("Message received: " + messageString, INFO);
+      // Parse message
+      if(messageString == "LAMP: USE_BLOOMING 1") {
+        mosfet.useBlooming = 1;
+        logger.log("Using blooming", INFO);
+      }
+      if(messageString == "LAMP: USE_BLOOMING 0") {
+        mosfet.useBlooming = 0;
+        logger.log("Not using blooming", INFO);
+      }
+      if(messageString == "LAMP: USE_COLD_WHITE 1") {
+        mosfet.useColdWhite = 1;
+        logger.log("Using cold white", INFO);
+      }
+      if(messageString == "LAMP: USE_COLD_WHITE 0") {
+        mosfet.useColdWhite = 0;
+        logger.log("Not using cold white", INFO);
+      }
+      if(messageString == "LAMP: USE_INFRARED 1") {
+        mosfet.useInfrared = 1;
+        logger.log("Using infrared", INFO);
+      }
+      if(messageString == "LAMP: USE_INFRARED 0") {
+        mosfet.useInfrared = 0;
+        logger.log("Not using infrared", INFO);
+      }
+    }
+  }
+}
 // ------------------ MAIN LOOP ------------------
 int Ip::update() {
   cycle++;
@@ -299,7 +361,38 @@ void setup() {
 };
 
 void loop() {
+  ip.readSerial();
   ip.update();
   delay(ip.cycleDelay);
 };
 // ------------------ END MAIN ------------------
+
+String lampIntToString(int value) {
+  switch(value) {
+    case 2:
+      return "INFRARED";
+    case 3:
+      return "COLD_WHITE";
+    case 4:
+      return "BLOOMING";
+    default:
+      return "INVALID";
+    break;
+  }
+}
+
+int lampStringToInt(String lamp) {
+  if(lamp == "INFRARED") {
+    return 2;
+  } else if(lamp == "COLD_WHITE") {
+    return 3;
+  } else if(lamp == "BLOOMING") {
+    return 4;
+  } else {
+    return 0;
+  }
+}
+
+// const int ch2 [3] = {MOSFET_CH2_PIN, OUTPUT, HIGH}; // INFRARED
+// const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, HIGH}; // COLD WHITE
+// const int ch4 [3] = {MOSFET_CH4_PIN, OUTPUT, HIGH}; // BLOOMING

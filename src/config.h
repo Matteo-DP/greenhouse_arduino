@@ -55,3 +55,7 @@
 #define PUMP_STATUS
 #define LAMP_STATUS
 // ------------------ END DATABASE TYPE MAP ------------------
+
+// ------------------ SERIAL FROM RPI ------------------
+#define MAX_SERIAL_BUFFER_SIZE 32
+// ------------------ END SERIAL FROM RPI ------------------

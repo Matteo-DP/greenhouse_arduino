@@ -6,6 +6,17 @@ import datetime
 ser = serial.Serial('/dev/ttyACM0', 9600)
 ser.reset_input_buffer()
 
+def sendLamp():
+    cursor = con.cursor()
+    cursor.execute("SELECT * FROM `config`")
+    result = cursor.fetchall()
+    cursor.close()
+    if len(result) > 0:
+        # Send all on lamps to arduino
+        for row in result:
+            if(str(row.name).startsWith("USE_")):
+                ser.write(f'<LAMP: {row.name} {row.value}>')
+
 def saveToSensorDb(type, value):
     cursor = con.cursor()
     now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -40,3 +51,5 @@ while True:
             type = split[2]
             message = " ".join(split[2:])
             saveToLogDb(type, message)
+        if(line == "ASK: LAMPS"):
+            sendLamp()

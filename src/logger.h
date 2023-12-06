@@ -20,6 +20,7 @@ class Logger {
       // Ask which lamps to turn on
       // Format: ASK: LAMPS
       Serial.println("ASK: LAMPS");
+      return 0;
     }
   private:
     const int logLevel = LOG_LEVEL;

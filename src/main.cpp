@@ -10,19 +10,17 @@
 ------------------ OVERVIEW ------------------
 - See config.h for configuration (pins, delays, etc.)
 - See logger.h for logger class
+- /rpi/ contains scripts for the Raspberry Pi
 ------------------ END OVERVIEW ------------------ 
 
 ------------------ TODO: ------------------
-- Photoresistor to save energy on lamps
-- Water level sensor
-- Test:
-  - RTC
+- Check time on RTC and Arduino, sensor values are offset by 1 hour
 ------------------ END TODO ------------------ 
 */ 
 
 /*
 ------------------ TESTS: ------------------
-- Lamp timing
+- Lamp control system
 ------------------ END TESTS ------------------
 */
 
@@ -88,6 +86,10 @@ class Ip {
           logger.askWhichLamps();
           logger.log("Mosfet initialised", INFO);
           return 0;
+      };
+      int printLampsConfig() {
+        logger.log("Lamps config: infrared: " + String(useInfrared) + ", cold white: " + String(useColdWhite) + ", blooming: " + String(useBlooming), INFO);
+        return 0;
       };
       int write(int channel, int value) {
           // if(value != (HIGH || LOW)) { logger.log("Unexpected mosfet write value", ERROR); return 1; }
@@ -228,8 +230,6 @@ class Ip {
     };
     int checkMoisture();
     int checkLamp();
-    static char message[MAX_SERIAL_BUFFER_SIZE];
-    static int messageIndex;
     // ------------------ END IP FUNCTIONS ------------------
   public:
     // ------------------ PUBLIC IP VARIABLES ------------------
@@ -259,14 +259,10 @@ int Ip::checkLamp() {
   // Check if the current time is within the day cycle interval
   if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
     // Current time is within the day cycle interval
-    if(mosfet.checkLampOn() == false) {
-      mosfet.write(ALL_LAMPS, HIGH);
-    }
+    mosfet.write(ALL_LAMPS, HIGH);
   } else {
     // Current time is outside the day cycle interval
-    if(mosfet.checkLampOn() == true) {
-      mosfet.write(ALL_LAMPS, LOW);
-    }
+    mosfet.write(ALL_LAMPS, LOW);
   }
   return 0;
 };
@@ -279,21 +275,19 @@ int Ip::init() {
   return 0;
 };
 int Ip::readSerial() {
-  messageIndex = 0;
+  static char message[MAX_SERIAL_BUFFER_SIZE];
+  static int messageIndex = 0;
   while(Serial.available() > 0) {
     char inChar = Serial.read();
-    if(inChar != '<') {
+    if(inChar != '<' && inChar != '>') {
       message[messageIndex] = inChar;
       messageIndex++;
     }
     if(inChar == '>') {
+      message[messageIndex] = '\0';
       String messageString = String(message);
-      // Empty the message array
-      for(int i = 0; i < MAX_SERIAL_BUFFER_SIZE; i++) {
-        message[i] = '\0';
-      }
       messageIndex = 0;
-      logger.log("Message received: " + messageString, INFO);
+      logger.log("Serial received: " + messageString, INFO);
       // Parse message
       if(messageString == "LAMP: USE_BLOOMING 1") {
         mosfet.useBlooming = 1;
@@ -303,24 +297,36 @@ int Ip::readSerial() {
         mosfet.useBlooming = 0;
         logger.log("Not using blooming", INFO);
       }
-      if(messageString == "LAMP: USE_COLD_WHITE 1") {
+      if(messageString == "LAMP: USE_COLDWHITE 1") {
         mosfet.useColdWhite = 1;
         logger.log("Using cold white", INFO);
       }
-      if(messageString == "LAMP: USE_COLD_WHITE 0") {
+      if(messageString == "LAMP: USE_COLDWHITE 0") {
         mosfet.useColdWhite = 0;
         logger.log("Not using cold white", INFO);
       }
+      // Last serial message so check lamp function here
       if(messageString == "LAMP: USE_INFRARED 1") {
         mosfet.useInfrared = 1;
         logger.log("Using infrared", INFO);
+        mosfet.printLampsConfig();
+        checkLamp();
       }
       if(messageString == "LAMP: USE_INFRARED 0") {
         mosfet.useInfrared = 0;
         logger.log("Not using infrared", INFO);
+        mosfet.printLampsConfig();
+        checkLamp();
       }
+      // Empty the message array
+      // for(int i = 0; i < MAX_SERIAL_BUFFER_SIZE; i++) {
+      //   message[i] = '\0';
+      // }
+      // Clear the message array
+      memset(message, 0, sizeof(message));
     }
   }
+  return 0;
 }
 // ------------------ MAIN LOOP ------------------
 int Ip::update() {

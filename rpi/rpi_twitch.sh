@@ -31,12 +31,6 @@ KEYFRAME=60
 # Set bitrate (Twitch recommends 3500000)
 BITRATE=3500000
 
-# Set stream URL
-URL=rtmp://ams02.contribute.live-video.net/app/
-
-# Set stream key
-KEY=live_998107604_G92o3VUr9tXWMsjSRDGo5SdbkozSqd
-
 # Command
 raspivid -n -t 0 -w $WIDTH -h $HEIGHT -fps $FRAMERATE -b $BITRATE -g $KEYFRAME -o - | ffmpeg -f lavfi -i anullsrc -c:a aac -r $FRAMERATE -i - -g $KEYFRAME -strict experimental -threads 4 -vcodec copy -map 0:a -map 1:v -b:v $BITRATE -preset ultrafast -f flv "${URL}/${KEY}"
 

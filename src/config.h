@@ -2,7 +2,7 @@
 
 // ------------------ CLOCK CYCLES ------------------
 #define CYCLE_DELAY_MS 500 // Main loop delay
-#define CYCLES_PER_ACTION 120 // Saving log data: 120
+#define CYCLES_PER_ACTION 120*5 // 5 minutes (functions: check lamp, save moisture data), Total time = CYCLE_DELAY_MS * CYCLES_PER_ACTION
 // ------------------ END CLOCK CYCLES ------------------
 
 // ------------------ LOGGING ------------------
@@ -17,7 +17,7 @@
 
 // ------------------ SOIL MOISTURE ------------------
 #define MOISTURE_PIN A0 // Analog pin
-#define PERCENTAGE_MOISTURE_THRESHOLD 50 // Percentage of moisture at which the pump should be turned on
+#define PERCENTAGE_MOISTURE_THRESHOLD 35 // Percentage of moisture at which the pump should be turned on
 // ------------------ END SOIL MOISTURE ------------------
 
 // ------------------ MOSFET ------------------
@@ -34,7 +34,7 @@
 #define ALL_LAMPS 5 // Edge case to select all lamps (channels 2-4)
 // Pump timing
 #define PUMP_WATERING_PERIOD_MILLIS 5000
-#define PUMP_WATERING_TIMEOUT_MILLIS 60000*5 // 5 minutes
+#define PUMP_WATERING_TIMEOUT_MILLIS 60000*15 // 15 minutes
 // ------------------ END MOSFET ------------------
 
 // ------------------ RTC ------------------
@@ -59,3 +59,7 @@
 // ------------------ SERIAL FROM RPI ------------------
 #define MAX_SERIAL_BUFFER_SIZE 32
 // ------------------ END SERIAL FROM RPI ------------------
+
+// ------------------ FLOW SENSOR ------------------
+#define FLOW_SENSOR_PIN 2
+// ------------------ END FLOW SENSOR ------------------

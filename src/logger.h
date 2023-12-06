@@ -16,6 +16,12 @@ class Logger {
       Serial.println("RPI: " + String(type) + " " + String(value));
       return 0;
     }
+    int askWhichLamps() {
+      // Ask which lamps to turn on
+      // Format: ASK: LAMPS
+      Serial.println("ASK: LAMPS");
+      return 0;
+    }
   private:
     const int logLevel = LOG_LEVEL;
     String logLevelToString(int importance) {

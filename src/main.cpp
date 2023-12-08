@@ -366,13 +366,13 @@ int Ip::update() {
   soil_moisture.read();
   lcd.update(soil_moisture.percentage);
   lcdDisplayTimeString();
+  checkLamp();
 
   logger.log("Cycle: " + String(cycle), DEBUG);
 
   mosfet.checkWateringMillis();
   if(cycle == CYCLES_PER_ACTION) {
     checkMoisture();
-    checkLamp();
     logger.log("Saving data. Cycle:" + String(cycle), DEBUG);
     logger.serialToRpiDb(SOIL_MOISTURE, soil_moisture.percentage);
     logger.serialToRpiDb(LIGHT_SENSOR, light.value);

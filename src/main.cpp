@@ -10,19 +10,15 @@
 ------------------ OVERVIEW ------------------
 - See config.h for configuration (pins, delays, etc.)
 - See logger.h for logger class
-- /rpi/ contains scripts for the Raspberry Pi
+- /rpi/ contains python scripts for the Raspberry Pi
 ------------------ END OVERVIEW ------------------ 
 
 ------------------ TODO: ------------------
-- Check time on RTC and Arduino, sensor values are offset by 1 hour
+- Check time on RTC and Arduino, values are offset by 1 hour
+- Wire the light sensor
+- Test and change the light sensor threshold
 ------------------ END TODO ------------------ 
 */ 
-
-/*
------------------- TESTS: ------------------
-- Lamp control system
------------------- END TESTS ------------------
-*/
 
 // ------------------ CLASSES ------------------
 // ------------------ IP ------------------
@@ -185,6 +181,23 @@ class Ip {
         };
     } soil_moisture;
     // ------------------ END SOIL MOISTURE ------------------
+    // ------------------ LIGHT SENSOR ------------------
+    class Light {
+      public:
+        const int pin [2] = {LIGHT_PIN, INPUT};
+        int value;
+        int init() {
+          pinMode(pin[0], pin[1]);
+          logger.log("Light sensor initialised", INFO);
+          return 0;
+        };
+        int read() {
+          value = analogRead(pin[0]);
+          logger.log("Light: " + String(value), SENSOR);
+          return 0;
+        };
+    } light;
+    // ------------------ END LIGHT SENSOR ------------------
     // ------------------ RTC ------------------
     class RTC {
       public:
@@ -256,13 +269,26 @@ int Ip::checkMoisture() {
   return 0;
 };
 int Ip::checkLamp() {
-  // Check if the current time is within the day cycle interval
-  if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
-    // Current time is within the day cycle interval
-    mosfet.write(ALL_LAMPS, HIGH);
+  if(light.value > LIGHT_THRESHOLD) {
+    // Natural light, turn off lamps if they're on and return
+    if(mosfet.checkLampOn() == true) {
+      logger.log("Natural light detected, turning off lamps", INFO);
+      mosfet.write(ALL_LAMPS, LOW);
+    };
+    return 0;
   } else {
-    // Current time is outside the day cycle interval
-    mosfet.write(ALL_LAMPS, LOW);
+    // Check if the current time is within the day cycle interval
+    if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
+      // Current time is within the day cycle interval
+      if(mosfet.checkLampOn() == false) {
+        mosfet.write(ALL_LAMPS, HIGH);
+      }
+    } else {
+      // Current time is outside the day cycle interval
+      if(mosfet.checkLampOn() == true) {
+        mosfet.write(ALL_LAMPS, LOW);
+      }
+    }
   }
   return 0;
 };
@@ -272,6 +298,7 @@ int Ip::init() {
   lcd.init();
   soil_moisture.init();
   rtc.init();
+  light.init();
   return 0;
 };
 int Ip::readSerial() {
@@ -322,7 +349,7 @@ int Ip::readSerial() {
       // for(int i = 0; i < MAX_SERIAL_BUFFER_SIZE; i++) {
       //   message[i] = '\0';
       // }
-      // Clear the message array
+      // Empty the message array
       memset(message, 0, sizeof(message));
     }
   }
@@ -335,6 +362,7 @@ int Ip::update() {
   logger.log(String(mosfet.currentMillis), DEBUG);
   rtc.update(); // Update RTC time variable every cycle
 
+  light.read();
   soil_moisture.read();
   lcd.update(soil_moisture.percentage);
   lcdDisplayTimeString();
@@ -347,6 +375,7 @@ int Ip::update() {
     checkLamp();
     logger.log("Saving data. Cycle:" + String(cycle), DEBUG);
     logger.serialToRpiDb(SOIL_MOISTURE, soil_moisture.percentage);
+    logger.serialToRpiDb(LIGHT_SENSOR, light.value);
     cycle = 0;
   };
 
@@ -373,6 +402,10 @@ void loop() {
 };
 // ------------------ END MAIN ------------------
 
+// ------------------ MISCELLANIOUS ------------------
+// const int ch2 [3] = {MOSFET_CH2_PIN, OUTPUT, HIGH}; // INFRARED
+// const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, HIGH}; // COLD WHITE
+// const int ch4 [3] = {MOSFET_CH4_PIN, OUTPUT, HIGH}; // BLOOMING
 String lampIntToString(int value) {
   switch(value) {
     case 2:
@@ -385,8 +418,7 @@ String lampIntToString(int value) {
       return "INVALID";
     break;
   }
-}
-
+};
 int lampStringToInt(String lamp) {
   if(lamp == "INFRARED") {
     return 2;
@@ -397,8 +429,5 @@ int lampStringToInt(String lamp) {
   } else {
     return 0;
   }
-}
-
-// const int ch2 [3] = {MOSFET_CH2_PIN, OUTPUT, HIGH}; // INFRARED
-// const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, HIGH}; // COLD WHITE
-// const int ch4 [3] = {MOSFET_CH4_PIN, OUTPUT, HIGH}; // BLOOMING
+};
+// ------------------ END MISCELLANIOUS ------------------

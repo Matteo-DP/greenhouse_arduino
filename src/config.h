@@ -47,13 +47,11 @@
 #define LCD_I2C_ADDRESS 0x27
 // ------------------ END LCD ------------------
 
-// ------------------ END CONFIG ------------------
 
 // ------------------ DATABASE TYPE MAP ------------------
 // TODO: check type map
 #define SOIL_MOISTURE 0
-#define PUMP_STATUS
-#define LAMP_STATUS
+#define LIGHT_SENSOR 1
 // ------------------ END DATABASE TYPE MAP ------------------
 
 // ------------------ SERIAL FROM RPI ------------------
@@ -63,3 +61,11 @@
 // ------------------ FLOW SENSOR ------------------
 #define FLOW_SENSOR_PIN 2
 // ------------------ END FLOW SENSOR ------------------
+
+
+// ------------------ LIGHT SENSOR ------------------
+#define LIGHT_PIN A1
+#define LIGHT_THRESHOLD 100 // TODO: TEST AND CHANGE THIS VALUE
+// ------------------ END LIGHT SENSOR ------------------
+
+// ------------------ END CONFIG ------------------

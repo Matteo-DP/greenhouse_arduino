@@ -13,13 +13,13 @@ class Logger {
       // Serial communication with Raspberry Pi
       // Line must begin with "RPI:" and end with "\n"
       // Format: RPI: <type> <value>
-      Serial.println("RPI: " + String(type) + " " + String(value));
+      Serial.println("DB: " + String(type) + " " + String(value));
       return 0;
     }
     int askWhichLamps() {
       // Ask which lamps to turn on
       // Format: ASK: LAMPS
-      Serial.println("ASK: LAMPS");
+      Serial.println("ASK");
       return 0;
     }
   private:

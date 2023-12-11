@@ -5,6 +5,7 @@
 #include <SPI.h>
 #include <config.h>
 #include <logger.h>
+#include <functions.h>
 
 /*
 ------------------ OVERVIEW ------------------
@@ -17,6 +18,7 @@
 - Check time on RTC and Arduino, values are offset by 1 hour
 - Wire the light sensor
 - Test and change the light sensor threshold
+- Test new serial communication protocol
 ------------------ END TODO ------------------ 
 */ 
 
@@ -66,9 +68,11 @@ class Ip {
         const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, LOW}; // COLD WHITE
         const int ch4 [3] = {MOSFET_CH4_PIN, OUTPUT, LOW}; // BLOOMING
 
+        // Configurable lamp states
         int useInfrared = ch2[2];
         int useColdWhite = ch3[2];
         int useBlooming = ch4[2];
+        int useLightSensor = 0; // Default to not using it
 
         int init() {
           pinMode(ch1[0], ch1[1]);
@@ -269,26 +273,43 @@ int Ip::checkMoisture() {
   return 0;
 };
 int Ip::checkLamp() {
-  if(light.value > LIGHT_THRESHOLD) {
-    // Natural light, turn off lamps if they're on and return
-    if(mosfet.checkLampOn() == true) {
-      logger.log("Natural light detected, turning off lamps", INFO);
-      mosfet.write(ALL_LAMPS, LOW);
-    };
-    return 0;
-  } else {
-    // Check if the current time is within the day cycle interval
-    if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
-      // Current time is within the day cycle interval
-      if(mosfet.checkLampOn() == false) {
-        mosfet.write(ALL_LAMPS, HIGH);
+  switch(mosfet.useLightSensor) {
+    case 0:
+      // Check if the current time is within the day cycle interval
+      if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
+        // Current time is within the day cycle interval
+        if(mosfet.checkLampOn() == false) {
+          mosfet.write(ALL_LAMPS, HIGH);
+        }
+      } else {
+        // Current time is outside the day cycle interval
+        if(mosfet.checkLampOn() == true) {
+          mosfet.write(ALL_LAMPS, LOW);
+        }
       }
-    } else {
-      // Current time is outside the day cycle interval
-      if(mosfet.checkLampOn() == true) {
-        mosfet.write(ALL_LAMPS, LOW);
+      break;
+    case 1:
+      if(light.value > LIGHT_THRESHOLD) {
+        // Natural light, turn off lamps if they're on and return
+        if(mosfet.checkLampOn() == true) {
+          logger.log("Natural light detected, turning off lamps", INFO);
+          mosfet.write(ALL_LAMPS, LOW);
+        };
+        return 0;
+      } else {
+        // Check if the current time is within the day cycle interval
+        if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
+          // Current time is within the day cycle interval
+          if(mosfet.checkLampOn() == false) {
+            mosfet.write(ALL_LAMPS, HIGH);
+          }
+        } else {
+          // Current time is outside the day cycle interval
+          if(mosfet.checkLampOn() == true) {
+            mosfet.write(ALL_LAMPS, LOW);
+          }
+        }
       }
-    }
   }
   return 0;
 };
@@ -315,40 +336,27 @@ int Ip::readSerial() {
       String messageString = String(message);
       messageIndex = 0;
       logger.log("Serial received: " + messageString, INFO);
+
       // Parse message
-      if(messageString == "LAMP: USE_BLOOMING 1") {
-        mosfet.useBlooming = 1;
-        logger.log("Using blooming", INFO);
-      }
-      if(messageString == "LAMP: USE_BLOOMING 0") {
-        mosfet.useBlooming = 0;
-        logger.log("Not using blooming", INFO);
-      }
-      if(messageString == "LAMP: USE_COLDWHITE 1") {
-        mosfet.useColdWhite = 1;
-        logger.log("Using cold white", INFO);
-      }
-      if(messageString == "LAMP: USE_COLDWHITE 0") {
-        mosfet.useColdWhite = 0;
-        logger.log("Not using cold white", INFO);
-      }
-      // Last serial message so check lamp function here
-      if(messageString == "LAMP: USE_INFRARED 1") {
-        mosfet.useInfrared = 1;
-        logger.log("Using infrared", INFO);
-        mosfet.printLampsConfig();
-        checkLamp();
-      }
-      if(messageString == "LAMP: USE_INFRARED 0") {
-        mosfet.useInfrared = 0;
-        logger.log("Not using infrared", INFO);
-        mosfet.printLampsConfig();
-        checkLamp();
-      }
-      // Empty the message array
-      // for(int i = 0; i < MAX_SERIAL_BUFFER_SIZE; i++) {
-      //   message[i] = '\0';
-      // }
+      String split[5]; // 5 elements max, 1 for each lamp, 1 for config declaration, 1 for light sensor
+      splitString(messageString, ' ', split, 5);
+      if(!split[0].equals("C")) return 1; // Not config message, no need to parse it here
+      for(int i = 0; i < 5; i++) { // Works in any order
+        if(split[i].startsWith("I")) {
+          split[i].remove(0, 1); // Remove 1 character at index 0
+          mosfet.useInfrared = split[i].toInt();
+        } else if(split[i].startsWith("W")) {
+          split[i].remove(0, 1);
+          mosfet.useColdWhite = split[i].toInt();
+        } else if(split[i].startsWith("B")) {
+          split[i].remove(0, 1);
+          mosfet.useBlooming = split[i].toInt();
+        } else if(split[i].startsWith("L")) {
+          split[i].remove(0, 1);
+          mosfet.useLightSensor = split[i].toInt();
+        }
+      };
+
       // Empty the message array
       memset(message, 0, sizeof(message));
     }
@@ -401,33 +409,3 @@ void loop() {
   delay(ip.cycleDelay);
 };
 // ------------------ END MAIN ------------------
-
-// ------------------ MISCELLANIOUS ------------------
-// const int ch2 [3] = {MOSFET_CH2_PIN, OUTPUT, HIGH}; // INFRARED
-// const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, HIGH}; // COLD WHITE
-// const int ch4 [3] = {MOSFET_CH4_PIN, OUTPUT, HIGH}; // BLOOMING
-String lampIntToString(int value) {
-  switch(value) {
-    case 2:
-      return "INFRARED";
-    case 3:
-      return "COLD_WHITE";
-    case 4:
-      return "BLOOMING";
-    default:
-      return "INVALID";
-    break;
-  }
-};
-int lampStringToInt(String lamp) {
-  if(lamp == "INFRARED") {
-    return 2;
-  } else if(lamp == "COLD_WHITE") {
-    return 3;
-  } else if(lamp == "BLOOMING") {
-    return 4;
-  } else {
-    return 0;
-  }
-};
-// ------------------ END MISCELLANIOUS ------------------

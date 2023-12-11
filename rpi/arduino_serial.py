@@ -38,45 +38,49 @@ def home():
         return "Failed to send lamps: " + str(e), 500
 
 def sendLamp():
-    try:
-        cursor = con.cursor()
-        cursor.execute("SELECT * FROM `config`")
-        result = cursor.fetchall()
-        cursor.close()
-        print(result)
-        if len(result) > 0:
-            for row in result:
-                if(str(row[0]).startswith("USE_")):
-                    message = f'<LAMP: {row[0]} {row[1]}>'
-                    print('Writing message: ' + message)
-                    ser.write(message.encode('utf-8'))
-                    time.sleep(2) # 2 second delay to prevent overflowing serial buffer
-        else:
-            print("This should never happen, table config not found")
-    except Exception as e:
-        print("Failed to send lamps: " + str(e))
+    cursor = con.cursor()
+    cursor.execute("SELECT * FROM `config`")
+    result = cursor.fetchall()
+    cursor.close()
+    print(result)
+    #if len(result) > 0:
+    #    for row in result:
+    #        if(str(row[0]).startswith("USE_")):
+    #            message = f'<LAMP: {row[0]} {row[1]}>'
+    #            print('Writing message: ' + message)
+    #            ser.write(message.encode('utf-8'))
+    #            time.sleep(2) # 2 second delay to prevent overflowing serial buffer
+    #else:
+    #    print("This should never happen, table config not found")
+    
+    # Better approach that does not overflow serial buffer
+    message = 'C ' # C for config
+    for row in result:
+        if(str(row[0]) == "USE_INFRARED"):
+            message += f'I{row[1]} '
+        if(str(row[0]) == "USE_COLDWHITE"):
+            message += f'W{row[1]} '
+        if(str(row[0]) == "USE_BLOOMING"):
+            message += f'B{row[1]} '
+        if(str(row[0]) == "USE_LIGHT_SENSOR"):
+            message += f'L{row[1]} '
+    ser.write(message.strip().encode('utf-8')) # Strip to remove trailing space
 
 def saveToSensorDb(type, value):
-    try:
-        cursor = con.cursor()
-        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute("INSERT INTO `sensor_staging` (`Type`, `Value`, `datetime`) VALUES (%s, %s, %s)", (type, value, now))
-        con.commit()
-        cursor.close()
-        print("Saved to sensor DB: " + type + " " + value)
-    except Exception as e:
-        print("Failed to save to sensor DB: " + str(e))
+    cursor = con.cursor()
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute("INSERT INTO `sensor_staging` (`Type`, `Value`, `datetime`) VALUES (%s, %s, %s)", (type, value, now))
+    con.commit()
+    cursor.close()
+    print("Saved to sensor DB: " + type + " " + value)
 
 def saveToLogDb(type, message):
-    try:
-        cursor = con.cursor()
-        now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        cursor.execute("INSERT INTO `log_staging` (`type`, `message`, `datetime`) VALUES (%s, %s, %s)", (logStringToInt(type), message, now))
-        con.commit()
-        cursor.close()
-        print("Saved to log DB: " + type + " " + message)
-    except Exception as e:
-        print("Failed to save to log DB: " + str(e))
+    cursor = con.cursor()
+    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute("INSERT INTO `log_staging` (`type`, `message`, `datetime`) VALUES (%s, %s, %s)", (logStringToInt(type), message, now))
+    con.commit()
+    cursor.close()
+    print("Saved to log DB: " + type + " " + message)
 
 def logStringToInt(string):
     # Fix this
@@ -89,7 +93,7 @@ def runSerialLoop():
             if ser.in_waiting > 0:
                 line = ser.readline().decode('utf-8').rstrip()
                 print(line)
-                if line.startswith("RPI: "):
+                if line.startswith("DB: "):
                     split = line.split(" ")
                     type = split[1]
                     value = split[2]
@@ -99,7 +103,7 @@ def runSerialLoop():
                     type = split[2]
                     message = " ".join(split[2:])
                     saveToLogDb(type, message)
-                if(line == "ASK: LAMPS"):
+                if(line == "ASK"):
                     sendLamp()
 
 # Start the serial loop in a separate thread

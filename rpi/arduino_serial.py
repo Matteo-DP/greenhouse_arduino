@@ -5,6 +5,7 @@ import datetime
 import time
 from flask import Flask
 import threading
+import random
 
 app = Flask(__name__)
 
@@ -15,13 +16,15 @@ def open_serial_connection():
     global ser
     while keepRunning:
         try:
-            ser = serial.Serial('/dev/ttyACM0', 9600)
+            serPorts = ['/dev/ttyACM0', "/dev/ttyACM1"] # Choose random fucking port because it keeps changing
+            serPort = random.randint(0, 1)
+            ser = serial.Serial(serPorts[serPort], 9600)
             ser.reset_input_buffer()
             print("Serial connection established.")
             return True
         except serial.SerialException as e:
             print(f"Failed to open serial port: {e}")
-            time.sleep(5)  # Wait for 5 seconds before retrying
+            time.sleep(1)  # Wait for 1 seconds before retrying
 
 def close_serial_connection():
     global ser
@@ -54,7 +57,7 @@ def sendLamp():
     #    print("This should never happen, table config not found")
     
     # Better approach that does not overflow serial buffer
-    message = 'C ' # C for config
+    message = '<C ' # C for config
     for row in result:
         if(str(row[0]) == "USE_INFRARED"):
             message += f'I{row[1]} '
@@ -64,7 +67,10 @@ def sendLamp():
             message += f'B{row[1]} '
         if(str(row[0]) == "USE_LIGHT_SENSOR"):
             message += f'L{row[1]} '
-    ser.write(message.strip().encode('utf-8')) # Strip to remove trailing space
+    message.strip() # Remove trailing space
+    message += '>'
+    print('Writing message from rpi: ' + message)
+    ser.write(message.encode('utf-8')) # Strip to remove trailing space
 
 def saveToSensorDb(type, value):
     cursor = con.cursor()

@@ -45,4 +45,12 @@ int lampStringToInt(String lamp) {
     return 0;
   }
 };
+String dbIntToString(int type) {
+  switch(type) {
+    case 0:
+      return "SOIL MOISTURE";
+    case 1:
+      return "LIGHT INTENSITY";
+  }
+};
 #endif

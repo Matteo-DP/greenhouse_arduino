@@ -65,7 +65,7 @@
 
 // ------------------ LIGHT SENSOR ------------------
 #define LIGHT_PIN A1
-#define LIGHT_THRESHOLD 100 // TODO: TEST AND CHANGE THIS VALUE
+#define LIGHT_THRESHOLD 375 // TODO: TEST AND CHANGE THIS VALUE
 // ------------------ END LIGHT SENSOR ------------------
 
 // ------------------ END CONFIG ------------------

@@ -5,24 +5,23 @@
 #include <SPI.h>
 #include <config.h>
 #include <logger.h>
+#include <functions.h>
+#include <BH1750.h>
 
 /*
 ------------------ OVERVIEW ------------------
 - See config.h for configuration (pins, delays, etc.)
 - See logger.h for logger class
-- /rpi/ contains scripts for the Raspberry Pi
+- /rpi/ contains python scripts for the Raspberry Pi
 ------------------ END OVERVIEW ------------------ 
 
 ------------------ TODO: ------------------
-- Check time on RTC and Arduino, sensor values are offset by 1 hour
+- Check time on RTC and Arduino, values are offset by 1 hour
+- Wire the light sensor
+- Test and change the light sensor threshold
+- Test new serial communication protocol
 ------------------ END TODO ------------------ 
 */ 
-
-/*
------------------- TESTS: ------------------
-- Lamp control system
------------------- END TESTS ------------------
-*/
 
 // ------------------ CLASSES ------------------
 // ------------------ IP ------------------
@@ -63,6 +62,8 @@ class Ip {
 
         int pumpState = ch1[2]; // Initialse default pump state
 
+        int lampsChanged = 0; // Used to check if the lamps config has changed
+
         // { pin, pin mode, default pin state }
         // Set all default lamp states to off, ask for which lamps to turn on on init
         const int ch1 [3] = {MOSFET_CH1_PIN, OUTPUT, LOW}; // PUMP
@@ -70,9 +71,11 @@ class Ip {
         const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, LOW}; // COLD WHITE
         const int ch4 [3] = {MOSFET_CH4_PIN, OUTPUT, LOW}; // BLOOMING
 
+        // Configurable lamp states
         int useInfrared = ch2[2];
         int useColdWhite = ch3[2];
         int useBlooming = ch4[2];
+        int useLightSensor = 0; // Default to not using it
 
         int init() {
           pinMode(ch1[0], ch1[1]);
@@ -88,7 +91,7 @@ class Ip {
           return 0;
       };
       int printLampsConfig() {
-        logger.log("Lamps config: infrared: " + String(useInfrared) + ", cold white: " + String(useColdWhite) + ", blooming: " + String(useBlooming), INFO);
+        logger.log("Lamps config: infrared: " + String(useInfrared) + ", cold white: " + String(useColdWhite) + ", blooming: " + String(useBlooming) + ", light: " + String(useLightSensor), INFO);
         return 0;
       };
       int write(int channel, int value) {
@@ -185,6 +188,23 @@ class Ip {
         };
     } soil_moisture;
     // ------------------ END SOIL MOISTURE ------------------
+    // ------------------ LIGHT SENSOR ------------------
+    class Light {
+      public:
+        BH1750 GY30;
+        float value;
+        int init() {
+          GY30.begin(); // Initialize the sensor object
+          logger.log("Light sensor initialised", INFO);
+          return 0;
+        };
+        int read() {
+          value = GY30.readLightLevel();
+          logger.log("Light: " + String(value), SENSOR);
+          return 0;
+        };
+    } light;
+    // ------------------ END LIGHT SENSOR ------------------
     // ------------------ RTC ------------------
     class RTC {
       public:
@@ -256,13 +276,54 @@ int Ip::checkMoisture() {
   return 0;
 };
 int Ip::checkLamp() {
-  // Check if the current time is within the day cycle interval
-  if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
-    // Current time is within the day cycle interval
-    mosfet.write(ALL_LAMPS, HIGH);
-  } else {
-    // Current time is outside the day cycle interval
-    mosfet.write(ALL_LAMPS, LOW);
+  switch(mosfet.useLightSensor) {
+    case 0:
+      // Check if the current time is within the day cycle interval
+      if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
+        // Current time is within the day cycle interval
+        if(mosfet.checkLampOn() == false && !(mosfet.useLightSensor == 0 && mosfet.useBlooming == 0 && mosfet.useInfrared == 0 && mosfet.useColdWhite == 0)) {
+          mosfet.write(ALL_LAMPS, HIGH);
+        } else if(mosfet.lampsChanged == 1) {
+          mosfet.write(ALL_LAMPS, HIGH);
+          mosfet.lampsChanged = 0;
+        }
+      } else {
+        // Current time is outside the day cycle interval
+        if(mosfet.checkLampOn() == true) {
+          //mosfet.write(ALL_LAMPS, LOW);
+          // Idk why this doesnt work, better safe than sorry
+          digitalWrite(mosfet.ch2[0], LOW);
+          digitalWrite(mosfet.ch3[0], LOW);
+          digitalWrite(mosfet.ch4[0], LOW);
+        }
+      }
+      break;
+    case 1:
+      if(light.value > LIGHT_THRESHOLD) {
+        // Natural light, turn off lamps if they're on and return
+        if(mosfet.checkLampOn() == true) {
+          logger.log("Natural light detected, turning off lamps", INFO);
+          //mosfet.write(ALL_LAMPS, LOW);
+          digitalWrite(mosfet.ch2[0], LOW);
+          digitalWrite(mosfet.ch3[0], LOW);
+          digitalWrite(mosfet.ch4[0], LOW);
+          
+          return 0;
+        };
+        return 0;
+      } else {
+        // Check if the current time is within the day cycle interval
+        if (rtc.now.hour() >= rtc.lampStartHour && rtc.now.hour() < rtc.lampEndHour) {
+          // Current time is within the day cycle interval
+          if(mosfet.checkLampOn() == false && !(mosfet.useLightSensor == 0 && mosfet.useBlooming == 0 && mosfet.useInfrared == 0 && mosfet.useColdWhite == 0)) {
+            mosfet.write(ALL_LAMPS, HIGH);
+          } else if(mosfet.lampsChanged == 1) {
+            mosfet.write(ALL_LAMPS, HIGH);
+            mosfet.lampsChanged = 0;
+          }
+        }
+      }
+      break;
   }
   return 0;
 };
@@ -272,6 +333,7 @@ int Ip::init() {
   lcd.init();
   soil_moisture.init();
   rtc.init();
+  light.init();
   return 0;
 };
 int Ip::readSerial() {
@@ -288,41 +350,35 @@ int Ip::readSerial() {
       String messageString = String(message);
       messageIndex = 0;
       logger.log("Serial received: " + messageString, INFO);
+
       // Parse message
-      if(messageString == "LAMP: USE_BLOOMING 1") {
-        mosfet.useBlooming = 1;
-        logger.log("Using blooming", INFO);
-      }
-      if(messageString == "LAMP: USE_BLOOMING 0") {
-        mosfet.useBlooming = 0;
-        logger.log("Not using blooming", INFO);
-      }
-      if(messageString == "LAMP: USE_COLDWHITE 1") {
-        mosfet.useColdWhite = 1;
-        logger.log("Using cold white", INFO);
-      }
-      if(messageString == "LAMP: USE_COLDWHITE 0") {
-        mosfet.useColdWhite = 0;
-        logger.log("Not using cold white", INFO);
-      }
-      // Last serial message so check lamp function here
-      if(messageString == "LAMP: USE_INFRARED 1") {
-        mosfet.useInfrared = 1;
-        logger.log("Using infrared", INFO);
-        mosfet.printLampsConfig();
-        checkLamp();
-      }
-      if(messageString == "LAMP: USE_INFRARED 0") {
-        mosfet.useInfrared = 0;
-        logger.log("Not using infrared", INFO);
-        mosfet.printLampsConfig();
-        checkLamp();
-      }
+      String split[5]; // 5 elements max, 1 for each lamp, 1 for config declaration, 1 for light sensor
+      splitString(messageString, ' ', split, 5);
+      if(!split[0].equals("C")) return 1; // Not config message, no need to parse it here
+      for(int i = 0; i < 5; i++) { // Works in any order
+        if(split[i].startsWith("I")) {
+          split[i].remove(0, 1); // Remove 1 character at index 0
+          mosfet.useInfrared = split[i].toInt();
+          mosfet.lampsChanged = 1;
+          logger.log("Use infrared: " + String(mosfet.useInfrared), INFO);
+        } else if(split[i].startsWith("W")) {
+          split[i].remove(0, 1);
+          mosfet.useColdWhite = split[i].toInt();
+          mosfet.lampsChanged = 1;
+          logger.log("Use cold white: " + String(mosfet.useColdWhite), INFO);
+        } else if(split[i].startsWith("B")) {
+          split[i].remove(0, 1);
+          mosfet.useBlooming = split[i].toInt();
+          mosfet.lampsChanged = 1;
+          logger.log("Use blooming: " + String(mosfet.useBlooming), INFO);
+        } else if(split[i].startsWith("L")) {
+          split[i].remove(0, 1);
+          mosfet.useLightSensor = split[i].toInt();
+          logger.log("Use light sensor: " + String(mosfet.useLightSensor), INFO);
+        }
+      };
+
       // Empty the message array
-      // for(int i = 0; i < MAX_SERIAL_BUFFER_SIZE; i++) {
-      //   message[i] = '\0';
-      // }
-      // Clear the message array
       memset(message, 0, sizeof(message));
     }
   }
@@ -335,18 +391,20 @@ int Ip::update() {
   logger.log(String(mosfet.currentMillis), DEBUG);
   rtc.update(); // Update RTC time variable every cycle
 
+  light.read();
   soil_moisture.read();
   lcd.update(soil_moisture.percentage);
   lcdDisplayTimeString();
+  checkLamp();
 
   logger.log("Cycle: " + String(cycle), DEBUG);
 
   mosfet.checkWateringMillis();
   if(cycle == CYCLES_PER_ACTION) {
     checkMoisture();
-    checkLamp();
     logger.log("Saving data. Cycle:" + String(cycle), DEBUG);
     logger.serialToRpiDb(SOIL_MOISTURE, soil_moisture.percentage);
+    logger.serialToRpiDb(LIGHT_SENSOR, light.value);
     cycle = 0;
   };
 
@@ -372,33 +430,3 @@ void loop() {
   delay(ip.cycleDelay);
 };
 // ------------------ END MAIN ------------------
-
-String lampIntToString(int value) {
-  switch(value) {
-    case 2:
-      return "INFRARED";
-    case 3:
-      return "COLD_WHITE";
-    case 4:
-      return "BLOOMING";
-    default:
-      return "INVALID";
-    break;
-  }
-}
-
-int lampStringToInt(String lamp) {
-  if(lamp == "INFRARED") {
-    return 2;
-  } else if(lamp == "COLD_WHITE") {
-    return 3;
-  } else if(lamp == "BLOOMING") {
-    return 4;
-  } else {
-    return 0;
-  }
-}
-
-// const int ch2 [3] = {MOSFET_CH2_PIN, OUTPUT, HIGH}; // INFRARED
-// const int ch3 [3] = {MOSFET_CH3_PIN, OUTPUT, HIGH}; // COLD WHITE
-// const int ch4 [3] = {MOSFET_CH4_PIN, OUTPUT, HIGH}; // BLOOMING
